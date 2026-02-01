@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+
+    <title>Smart Alarm IoT</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Style kafelków statusu */
+        .status-disarmed {
+            border-left: 5px solid #6c757d;
+        }
+
+        .status-armed {
+            border-left: 5px solid #198754;
+        }
+
+        /* Animacja pulsowania dla alarmu */
+        .status-robbery {
+            border-left: 5px solid #dc3545;
+            animation: pulse 1.5s infinite;
+            background-color: #fff5f5;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+            }
+        }
+
+        .card-device {
+            transition: transform 0.2s;
+        }
+
+        .card-device:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container">
+            <span class="navbar-brand">🛡️ Smart Alarm</span>
+            <button id="btn-logout" class="btn btn-outline-light btn-sm hidden">Wyloguj</button>
+        </div>
+    </nav>
+
+    <div class="container pb-5">
+
+        <div id="auth-section" class="card p-4 mx-auto shadow" style="max-width: 400px; margin-top: 50px;">
+            <h4 class="text-center mb-4">Panel Sterowania</h4>
+            <div class="mb-3">
+                <input type="email" id="email" class="form-control" placeholder="Email">
+            </div>
+            <div class="mb-3">
+                <input type="password" id="password" class="form-control" placeholder="Hasło">
+            </div>
+            <div class="d-grid gap-2">
+                <button id="btn-login" class="btn btn-primary">Zaloguj</button>
+                <button id="btn-register" class="btn btn-outline-secondary">Załóż konto</button>
+            </div>
+            <p id="auth-msg" class="text-danger mt-3 text-center small"></p>
+        </div>
+
+        <div id="dashboard-section" class="hidden">
+
+            <div class="accordion mb-5 shadow-sm" id="accordionProvisioning">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOne">
+                        <button class="accordion-button collapsed fw-bold text-primary" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                            ➕ Dodaj nowe urządzenie (Konfiguracja WiFi)
+                        </button>
+                    </h2>
+                    <div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#accordionProvisioning">
+                        <div class="accordion-body bg-light">
+                            <div class="row justify-content-center">
+                                <div class="col-md-8">
+                                    <div class="alert alert-info small">
+                                        1. Połącz ten komputer/telefon z siecią WiFi emitowaną przez ESP:
+                                        <b>ESP32_SETUP_PROV</b>.<br>
+                                        2. Wypełnij poniższe dane i kliknij "Wyślij".
+                                    </div>
+                                    <form id="provisioning-form">
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <input type="text" id="prov-ssid" class="form-control"
+                                                    placeholder="SSID WiFi">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input type="password" id="prov-pass" class="form-control"
+                                                    placeholder="Hasło WiFi">
+                                            </div>
+                                            <div class="col-12">
+                                                <input type="text" id="prov-mqtt" class="form-control"
+                                                    placeholder="Nazwa serwera MQTT (np. MojLaptop)">
+                                            </div>
+                                            <div class="col-12">
+                                                <input type="text" id="prov-pinpad" class="form-control"
+                                                    placeholder="Kod PIN (np. 1234)" maxlength="8">
+                                            </div>
+                                            <div class="col-12 d-grid mt-2">
+                                                <button type="button" id="btn-send-config"
+                                                    class="btn btn-warning fw-bold">Wyślij i Paruj</button>
+                                            </div>
+                                        </div>
+                                        <div id="prov-status" class="mt-2 fw-bold text-center"></div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="mb-3 text-secondary border-bottom pb-2">Twoje Urządzenia</h5>
+            <div id="devices-list" class="row g-4">
+                <div class="col-12 text-center text-muted py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Ładowanie urządzeń...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged }
+            from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, set, update, onValue, remove }
+            from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCDMNvfCmHASlbLWBhtAcVo82vOOixce5g",
+  authDomain: "iot-anti-theft-976fb.firebaseapp.com",
+  databaseURL: "https://iot-anti-theft-976fb-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "iot-anti-theft-976fb",
+  storageBucket: "iot-anti-theft-976fb.firebasestorage.app",
+  messagingSenderId: "169223650480",
+  appId: "1:169223650480:web:4f555a8b701d075425cf75"
+};
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+        let currentUser = null;
+
+        // --- AUTHENTICATION ---
+        const authSection = document.getElementById('auth-section');
+        const dashboardSection = document.getElementById('dashboard-section');
+        const btnLogout = document.getElementById('btn-logout');
+
+        document.getElementById('btn-login').addEventListener('click', () => handleAuth('login'));
+        document.getElementById('btn-register').addEventListener('click', () => handleAuth('register'));
+        btnLogout.addEventListener('click', () => signOut(auth));
+
+        function handleAuth(action) {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            const method = action === 'register' ? createUserWithEmailAndPassword : signInWithEmailAndPassword;
+            method(auth, email, pass).catch(e => document.getElementById('auth-msg').innerText = e.message);
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                authSection.classList.add('hidden');
+                dashboardSection.classList.remove('hidden');
+                btnLogout.classList.remove('hidden');
+                // Załaduj urządzenia użytkownika
+                loadUserDevices(user.uid);
+            } else {
+                authSection.classList.remove('hidden');
+                dashboardSection.classList.add('hidden');
+                btnLogout.classList.add('hidden');
+            }
+        });
+
+        // --- RENDEROWANIE URZĄDZEŃ ---
+        function loadUserDevices(uid) {
+            const listRef = ref(db, `users/${uid}/devices`);
+
+            // onValue nasłuchuje zmian w czasie rzeczywistym
+            onValue(listRef, (snapshot) => {
+                const listContainer = document.getElementById('devices-list');
+                const data = snapshot.val();
+
+                listContainer.innerHTML = '';
+
+                if (!data) {
+                    listContainer.innerHTML = '<div class="col-12 text-center text-muted">Brak skonfigurowanych urządzeń. Dodaj nowe w zakładce powyżej.</div>';
+                    return;
+                }
+
+                // Iterujemy po MAC adresach (kluczach)
+                Object.keys(data).forEach(mac => {
+                    const deviceData = data[mac];
+                    const config = deviceData.config || { state: 'DISARMED', threshold: 1.5 };
+
+                    // Pobranie ostatniego pomiaru (jeśli istnieje)
+                    let lastAccel = 0;
+                    if (deviceData.measurements) {
+                        const mKeys = Object.keys(deviceData.measurements);
+                        const lastM = deviceData.measurements[mKeys[mKeys.length - 1]];
+                        // Obliczamy przybliżoną siłę wstrząsu (max z osi)
+                        lastAccel = Math.max(Math.abs(lastM.accel_x), Math.abs(lastM.accel_y), Math.abs(lastM.accel_z)).toFixed(2);
+                    }
+
+                    // Ustalenie wyglądu karty
+                    let statusClass = 'status-disarmed';
+                    let statusLabel = 'Rozbrojony';
+                    let badgeColor = 'bg-secondary';
+                    let armBtnDisabled = '';
+                    let disarmBtnDisabled = 'disabled';
+
+                    if (config.state === 'ARMED') {
+                        statusClass = 'status-armed';
+                        statusLabel = 'Czuwanie (Armed)';
+                        badgeColor = 'bg-success';
+                        armBtnDisabled = 'disabled';
+                        disarmBtnDisabled = '';
+                    } else if (config.state === 'ROBBERY') {
+                        statusClass = 'status-robbery';
+                        statusLabel = '🚨 ALARM WŁAMANIOWY!';
+                        badgeColor = 'bg-danger';
+                        armBtnDisabled = 'disabled'; // Podczas alarmu można tylko rozbroić
+                        disarmBtnDisabled = '';
+                    }
+
+                    // HTML Karty
+                    const cardHtml = `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card card-device h-100 shadow-sm ${statusClass}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <h5 class="card-title mb-0">Urządzenie</h5>
+                                        <small class="text-muted" style="font-size:0.75rem;">${mac}</small>
+                                    </div>
+                                    <span class="badge ${badgeColor}">${statusLabel}</span>
+                                </div>
+
+                                <div class="text-center py-3">
+                                    <h2 class="display-6 fw-bold mb-0">${lastAccel} G</h2>
+                                    <small class="text-muted">Ostatni pomiar przyspieszenia</small>
+                                </div>
+
+                                <hr>
+
+                                <label class="form-label small fw-bold">Czułość alarmu: <span id="val-${mac}">${config.threshold}</span> G</label>
+                                <input type="range" class="form-range" min="1.05" max="3.0" step="0.05"
+                                    value="${config.threshold}"
+                                    onchange="window.updateThreshold('${mac}', this.value)"
+                                    oninput="document.getElementById('val-${mac}').innerText = this.value">
+
+                                <div class="d-flex gap-2 justify-content-center flex-wrap mt-3">
+                                    <button class="btn btn-success btn-sm" onclick="window.setAlarmState('${mac}', 'ARMED')" ${armBtnDisabled}>🛡️ Uzbrój</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="window.setAlarmState('${mac}', 'DISARMED')" ${disarmBtnDisabled}>🔓 Rozbrój</button>
+                                    <button class="btn btn-danger btn-sm" onclick="window.setAlarmState('${mac}', 'ROBBERY')">🚨 Testuj alarm</button>
+                                </div>
+                            </div>
+                            <div class="card-footer bg-transparent border-0 text-end">
+                                <button class="btn btn-link text-danger p-0" style="font-size:0.8rem;" onclick="window.deleteDevice('${mac}')">Usuń</button>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                    listContainer.innerHTML += cardHtml;
+                });
+            });
+        }
+
+        // --- FUNKCJE GLOBALNE (Dostępne dla HTML onclick) ---
+
+        // Zmiana stanu (ARMED/DISARMED)
+        window.setAlarmState = (mac, newState) => {
+            if (!currentUser) return;
+            // Zapisujemy do Firebase -> Python to wykryje -> Wyśle MQTT -> ESP32 odbierze
+            update(ref(db, `users/${currentUser.uid}/devices/${mac}/config`), {
+                state: newState
+            });
+        };
+
+        // Zmiana progu czułości
+        window.updateThreshold = (mac, val) => {
+            if (!currentUser) return;
+            update(ref(db, `users/${currentUser.uid}/devices/${mac}/config`), {
+                threshold: parseFloat(val)
+            });
+        };
+
+        // Usuwanie urządzenia
+        window.deleteDevice = (mac) => {
+            if (!currentUser || !confirm("Czy na pewno usunąć urządzenie?")) return;
+            remove(ref(db, `users/${currentUser.uid}/devices/${mac}`));
+            remove(ref(db, `devices_registry/${mac}`)); // Opcjonalnie usuwamy też z rejestru
+        };
+
+        // --- LOGIKA PROVISIONINGU
+        document.getElementById('btn-send-config').addEventListener('click', async () => {
+            const ssid = document.getElementById('prov-ssid').value;
+            const pass = document.getElementById('prov-pass').value;
+            const mqtt = document.getElementById('prov-mqtt').value;
+            const pinpad = document.getElementById('prov-pinpad').value;
+            const statusDiv = document.getElementById('prov-status');
+
+            statusDiv.innerText = "Wysyłanie...";
+            statusDiv.className = "mt-2 text-info";
+
+            try {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch('http://192.168.4.1/api/wifi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid, password: pass, mqtt_uri: mqtt, pinpad_code: pinpad }),
+                    signal: controller.signal
+                });
+                clearTimeout(id);
+
+                const json = await response.json();
+                if (json.mac) {
+                    statusDiv.innerText = `✅ Sukces! MAC: ${json.mac}. Przypisano.`;
+                    statusDiv.className = "mt-2 text-success";
+
+                    // Automatyczne przypisanie w bazie
+                    await set(ref(db, 'devices_registry/' + json.mac), currentUser.uid);
+
+                    // Inicjalizacja configu
+                    await update(ref(db, `users/${currentUser.uid}/devices/${json.mac}/config`), {
+                        state: 'DISARMED',
+                        threshold: 1.5
+                    });
+                }
+            } catch (e) {
+                statusDiv.innerHTML = `❌ Błąd. Sprawdź połączenie z <b>ESP32_SETUP_PROV</b>.`;
+                statusDiv.className = "mt-2 text-danger";
+            }
+        });
+
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

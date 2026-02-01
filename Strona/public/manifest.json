@@ -1,0 +1,23 @@
+{
+    "short_name": "IoT App",
+    "name": "System IoT ESP32",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#f0f2f5",
+    "theme_color": "#0d6efd",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "logo192v2.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "any"
+        },
+        {
+            "src": "logo512v2.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "any maskable"
+        }
+    ]
+}

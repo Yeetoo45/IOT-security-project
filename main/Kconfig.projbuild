@@ -1,0 +1,157 @@
+menu "Security Setup"
+
+
+
+    config ROBBERY_LED_GPIO
+        int "Blink Robbery GPIO number"
+        default 41
+        help
+            GPIO number (IOxx) to blink on and off the LED.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+
+    config CONNECTED_LED_GPIO
+        int "Blink Connection GPIO number"
+        default 40
+        help
+            GPIO number (IOxx) to blink on and off the LED.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+
+    config PINPAD_ROW0_GPIO
+        int "Pinpad Row 0 GPIO"
+        default 1
+        help
+            GPIO number (IOxx) for row 0 of the 4x3 keypad.
+
+    config PINPAD_ROW1_GPIO
+        int "Pinpad Row 1 GPIO"
+        default 2
+        help
+            GPIO number (IOxx) for row 1 of the 4x3 keypad.
+
+    config PINPAD_ROW2_GPIO
+        int "Pinpad Row 2 GPIO"
+        default 3
+        help
+            GPIO number (IOxx) for row 2 of the 4x3 keypad.
+
+    config PINPAD_ROW3_GPIO
+        int "Pinpad Row 3 GPIO"
+        default 4
+        help
+            GPIO number (IOxx) for row 3 of the 4x3 keypad.
+
+    config PINPAD_COL0_GPIO
+        int "Pinpad Col 0 GPIO"
+        default 9
+        help
+            GPIO number (IOxx) for column 0 of the 4x3 keypad.
+
+    config PINPAD_COL1_GPIO
+        int "Pinpad Col 1 GPIO"
+        default 8
+        help
+            GPIO number (IOxx) for column 1 of the 4x3 keypad.
+
+    config PINPAD_COL2_GPIO
+        int "Pinpad Col 2 GPIO"
+        default 7
+        help
+            GPIO number (IOxx) for column 2 of the 4x3 keypad.
+
+    config DFPLAYER_UART_NUM
+        int "DFPlayer UART port (0/1/2)"
+        default 0
+        help
+            UART port used to communicate with DFPlayer Mini.
+
+    config DFPLAYER_UART_TX_GPIO
+        int "DFPlayer UART TX GPIO"
+        default 43
+        help
+            GPIO number (IOxx) used as UART TX for DFPlayer Mini.
+
+    config DFPLAYER_UART_RX_GPIO
+        int "DFPlayer UART RX GPIO"
+        default 44
+        help
+            GPIO number (IOxx) used as UART RX for DFPlayer Mini.
+
+    config DFPLAYER_UART_BAUD
+        int "DFPlayer UART baud rate"
+        default 9600
+        help
+            Baud rate for DFPlayer Mini UART communication.
+
+    config DFPLAYER_VOLUME
+        int "DFPlayer volume (0-30)"
+        default 20
+        range 0 30
+        help
+            Playback volume for DFPlayer Mini.
+
+    config ADXL345_I2C_PORT
+        int "ADXL345 I2C port (0/1)"
+        default 0
+        help
+            I2C port used for ADXL345.
+
+    config ADXL345_I2C_SDA_GPIO
+        int "ADXL345 I2C SDA GPIO"
+        default 5
+        help
+            GPIO number (IOxx) for ADXL345 SDA.
+
+    config ADXL345_I2C_SCL_GPIO
+        int "ADXL345 I2C SCL GPIO"
+        default 6
+        help
+            GPIO number (IOxx) for ADXL345 SCL.
+
+    config ADXL345_I2C_FREQ_HZ
+        int "ADXL345 I2C frequency (Hz)"
+        default 400000
+        help
+            I2C clock frequency for ADXL345.
+
+    config ADXL345_I2C_ADDR
+        hex "ADXL345 I2C address"
+        default 0x1D
+        help
+            I2C address for ADXL345 (0x53 or 0x1D).
+
+
+
+
+
+
+
+
+
+
+    choice ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD
+        prompt "WiFi Scan auth mode threshold"
+        default ESP_WIFI_AUTH_WPA2_PSK
+        help
+            The weakest authmode to accept in the scan mode.
+            This value defaults to ESP_WIFI_AUTH_WPA2_PSK in case password is present and ESP_WIFI_AUTH_OPEN is used.
+            Please select ESP_WIFI_AUTH_WEP/ESP_WIFI_AUTH_WPA_PSK in case AP is operating in WEP/WPA mode.
+
+        config ESP_WIFI_AUTH_OPEN
+            bool "OPEN"
+        config ESP_WIFI_AUTH_WEP
+            bool "WEP"
+        config ESP_WIFI_AUTH_WPA_PSK
+            bool "WPA PSK"
+        config ESP_WIFI_AUTH_WPA2_PSK
+            bool "WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA_WPA2_PSK
+            bool "WPA/WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA3_PSK
+            bool "WPA3 PSK"
+        config ESP_WIFI_AUTH_WPA2_WPA3_PSK
+            bool "WPA2/WPA3 PSK"
+        config ESP_WIFI_AUTH_WAPI_PSK
+            bool "WAPI PSK"
+    endchoice
+
+endmenu
