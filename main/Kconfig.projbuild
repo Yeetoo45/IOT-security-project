@@ -4,17 +4,28 @@ menu "Security Setup"
 
     config ROBBERY_LED_GPIO
         int "Blink Robbery GPIO number"
-        default 41
+        default 40
         help
             GPIO number (IOxx) to blink on and off the LED.
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
 
     config CONNECTED_LED_GPIO
         int "Blink Connection GPIO number"
-        default 40
+        default 41
         help
             GPIO number (IOxx) to blink on and off the LED.
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+
+
+    config BATTERY_MEASURE_GPIO
+        int "Battery measure GPIO"
+        default 9
+        help
+            GPIO number (IOxx) for battery measurement.
+
+
+
+
 
     config PINPAD_ROW0_GPIO
         int "Pinpad Row 0 GPIO"
@@ -42,7 +53,7 @@ menu "Security Setup"
 
     config PINPAD_COL0_GPIO
         int "Pinpad Col 0 GPIO"
-        default 9
+        default 39
         help
             GPIO number (IOxx) for column 0 of the 4x3 keypad.
 
@@ -118,9 +129,6 @@ menu "Security Setup"
         default 0x1D
         help
             I2C address for ADXL345 (0x53 or 0x1D).
-
-
-
 
 
 

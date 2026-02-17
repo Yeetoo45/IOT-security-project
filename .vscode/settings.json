@@ -12,5 +12,6 @@
     "--compile-commands-dir=c:\\Users\\dawid\\.vscode\\proj_security\\build"
   ],
   "idf.flashType": "UART",
-  "idf.portWin": "COM9"
+  "idf.portWin": "COM9",
+  "idf.currentSetup": "C:\\Users\\dawid\\esp\\v5.5.2\\esp-idf"
 }

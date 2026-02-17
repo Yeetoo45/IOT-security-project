@@ -7,6 +7,9 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "freertos/event_groups.h"
 
 #include "wifi_manager.h"
@@ -25,6 +28,7 @@ static const char *TAG = "main";
 
 #define CONNECTED_LED_GPIO ((gpio_num_t)CONFIG_CONNECTED_LED_GPIO)
 #define ROBBERY_LED_GPIO ((gpio_num_t)CONFIG_ROBBERY_LED_GPIO)
+#define BATTERY_ADC_GPIO ((gpio_num_t)CONFIG_BATTERY_MEASURE_GPIO)
 
 #define BUTTON_GPIO GPIO_NUM_0
 
@@ -33,13 +37,21 @@ static EventGroupHandle_t s_wifi_event_group;
 #define DEFAULT_HB_MS 15000
 #define DEFAULT_SLEEP_MS 30000
 #define DEFAULT_THRESHOLD 15.0
+#define BATTERY_READ_PERIOD_MS 5000
+#define BATTERY_ADC_ATTEN ADC_ATTEN_DB_11
+#define BATTERY_DIVIDER_RATIO 2.0f
 
 static void led_task(void *arg);
 static void robbery_led_task(void *arg);
+static void battery_read_task(void *arg);
 static void http_get_task(void *arg);
 static void do_http_get_once(void);
 void button_watchdog_task(void *pvParameters);
 void mdns_set_hostname_from_mac(void);
+
+static adc_oneshot_unit_handle_t s_adc_handle;
+static adc_cali_handle_t s_adc_cali;
+static bool s_adc_cali_enabled;
 
 void app_main(void)
 {
@@ -52,10 +64,11 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     esp_log_level_set("*", ESP_LOG_ERROR);
+    esp_log_level_set("BAT", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
     esp_log_level_set("BTN", ESP_LOG_INFO);
     esp_log_level_set("WIFI_MGR", ESP_LOG_INFO);
-    esp_log_level_set("MQTT_APP", ESP_LOG_INFO); // <--- DODAJ TO (Pokaż MQTT)
+    esp_log_level_set("MQTT_APP", ESP_LOG_INFO);
 
     ESP_LOGI(TAG, "Start");
 
@@ -68,6 +81,7 @@ void app_main(void)
 
     xTaskCreate(led_task, "led_task", 2048, NULL, 5, NULL);
     xTaskCreate(robbery_led_task, "robbery_led_task", 2048, NULL, 5, NULL);
+    xTaskCreate(battery_read_task, "battery_read_task", 3072, NULL, 5, NULL);
 
     ESP_LOGI(TAG, "Czekam na WiFi...");
     xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_EVENT, pdFALSE, pdFALSE, portMAX_DELAY);
@@ -91,6 +105,52 @@ void app_main(void)
 
     // milestone wifi zad2 (zbędne do projektu)
     // xTaskCreate(http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+}
+
+static void battery_read_task(void *arg)
+{
+    adc_unit_t unit;
+    adc_channel_t channel;
+    esp_err_t err = adc_oneshot_io_to_channel(BATTERY_ADC_GPIO, &unit, &channel);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE("BAT", "Nieprawidlowy GPIO dla ADC: %d", BATTERY_ADC_GPIO);
+        vTaskDelete(NULL);
+    }
+
+    adc_oneshot_unit_init_cfg_t init_cfg = {
+        .unit_id = unit,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &s_adc_handle));
+
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten = BATTERY_ADC_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, channel, &chan_cfg));
+
+    while (1)
+    {
+        int raw = 0;
+        int mv = 0;
+        ESP_ERROR_CHECK(adc_oneshot_read(s_adc_handle, channel, &raw));
+
+        if (s_adc_cali_enabled)
+        {
+            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(s_adc_cali, raw, &mv));
+        }
+        else
+        {
+            const int max_raw = (1 << 12) - 1;
+            mv = (raw * 3300) / max_raw;
+        }
+
+        float battery_mv = (float)mv * BATTERY_DIVIDER_RATIO;
+        ESP_LOGI("BAT", "Bateria: %.0f mV (ADC=%d)", battery_mv, raw);
+
+        vTaskDelay(pdMS_TO_TICKS(BATTERY_READ_PERIOD_MS));
+    }
 }
 
 void mdns_set_hostname_from_mac(void)
