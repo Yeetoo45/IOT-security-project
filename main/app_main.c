@@ -36,7 +36,7 @@ static EventGroupHandle_t s_wifi_event_group;
 
 #define DEFAULT_HB_MS 15000
 #define DEFAULT_SLEEP_MS 30000
-#define DEFAULT_THRESHOLD 15.0
+#define DEFAULT_THRESHOLD 0.5
 #define BATTERY_READ_PERIOD_MS 5000
 #define BATTERY_ADC_ATTEN ADC_ATTEN_DB_11
 #define BATTERY_DIVIDER_RATIO 2.0f
@@ -147,7 +147,10 @@ static void battery_read_task(void *arg)
         }
 
         float battery_mv = (float)mv * BATTERY_DIVIDER_RATIO;
-        ESP_LOGI("BAT", "Bateria: %.0f mV (ADC=%d)", battery_mv, raw);
+        // ESP_LOGI("BAT", "Bateria: %.0f mV (ADC=%d)", battery_mv, raw);
+
+        // Przekaż napięcie baterii do modułu MQTT
+        mqtt_app_set_battery_mv(battery_mv);
 
         vTaskDelay(pdMS_TO_TICKS(BATTERY_READ_PERIOD_MS));
     }
@@ -214,10 +217,12 @@ static void led_task(void *arg)
     gpio_config_t io = {
         .pin_bit_mask = 1ULL << CONNECTED_LED_GPIO,
         .mode = GPIO_MODE_OUTPUT,
-        .pull_down_en = 0,
-        .pull_up_en = 1,
+        .pull_down_en = 1,
+        .pull_up_en = 0,
         .intr_type = GPIO_INTR_DISABLE};
     gpio_config(&io);
+    gpio_set_level(CONNECTED_LED_GPIO, 0);
+    gpio_set_drive_capability(CONNECTED_LED_GPIO, GPIO_DRIVE_CAP_3);
 
     bool wifi_level = false;
 
@@ -255,6 +260,9 @@ static void led_task(void *arg)
 static void robbery_led_task(void *arg)
 {
     gpio_reset_pin(ROBBERY_LED_GPIO);
+    gpio_set_direction(ROBBERY_LED_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_pull_mode(ROBBERY_LED_GPIO, GPIO_PULLDOWN_ONLY);
+    gpio_set_drive_capability(ROBBERY_LED_GPIO, GPIO_DRIVE_CAP_3);
 
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -290,8 +298,10 @@ static void robbery_led_task(void *arg)
         }
         else
         {
+            ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
             ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
             ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+            gpio_set_level(ROBBERY_LED_GPIO, 0);
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }

@@ -15,7 +15,6 @@ FIREBASE_DB_URL = (
     "https://iot-anti-theft-976fb-default-rtdb.europe-west1.firebasedatabase.app/"
 )
 
-
 # init Firebase
 cred = credentials.Certificate(FIREBASE_CRED_PATH)
 firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
@@ -84,10 +83,17 @@ def on_message(client, userdata, msg):
                 "accel_x": data.get("x", 0),
                 "accel_y": data.get("y", 0),
                 "accel_z": data.get("z", 0),
+                "battery_mv": data.get("battery_mv", 0),
                 "timestamp": {".sv": "timestamp"},  # Firebase Server Time
             }
         )
         print(f"📥 Otrzymano dane z {mac}: {data}")
+
+        # Aktualizacja ostatniego napięcia baterii (jeśli przyszło w danych)
+        if "battery_mv" in data:
+            db.reference(f"users/{uid}/devices/{mac}/config").update(
+                {"battery_mv": data.get("battery_mv", 0)}
+            )
 
         # Aktualizacja stanu urządzenia z danych ESP
         status = data.get("status")
@@ -127,7 +133,9 @@ def send_mqtt_config(mac, config_data):
         payload["threshold"] = float(config_data["threshold"])
 
     if payload:
-        mqtt_client.publish(topic, json.dumps(payload))
+        # QoS=1 + retain, żeby komendy ARM/DISARM miały najwyższy priorytet dostarczenia
+        # i były natychmiast dostępne po reconnect.
+        mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=True)
         print(f"Wysłano config do {mac}: {payload}")
 
 

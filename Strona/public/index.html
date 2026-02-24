@@ -152,6 +152,7 @@
         import { getDatabase, ref, set, update, onValue, remove }
             from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+
 const firebaseConfig = {
   apiKey: "AIzaSyCDMNvfCmHASlbLWBhtAcVo82vOOixce5g",
   authDomain: "iot-anti-theft-976fb.firebaseapp.com",
@@ -161,6 +162,7 @@ const firebaseConfig = {
   messagingSenderId: "169223650480",
   appId: "1:169223650480:web:4f555a8b701d075425cf75"
 };
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
@@ -196,35 +198,54 @@ const firebaseConfig = {
                 btnLogout.classList.add('hidden');
             }
         });
-
+        let unsubscribeDevices = null;
         // --- RENDEROWANIE URZĄDZEŃ ---
         function loadUserDevices(uid) {
+
+
+            if (unsubscribeDevices) {
+                unsubscribeDevices();
+                unsubscribeDevices = null;
+            }
+
+
             const listRef = ref(db, `users/${uid}/devices`);
 
-            // onValue nasłuchuje zmian w czasie rzeczywistym
-            onValue(listRef, (snapshot) => {
+            unsubscribeDevices = onValue(listRef, (snapshot) => {
                 const listContainer = document.getElementById('devices-list');
                 const data = snapshot.val();
 
                 listContainer.innerHTML = '';
 
                 if (!data) {
-                    listContainer.innerHTML = '<div class="col-12 text-center text-muted">Brak skonfigurowanych urządzeń. Dodaj nowe w zakładce powyżej.</div>';
+                    listContainer.innerHTML =
+                        '<div class="col-12 text-center text-muted">Brak skonfigurowanych urządzeń. Dodaj nowe w zakładce powyżej.</div>';
                     return;
                 }
+
 
                 // Iterujemy po MAC adresach (kluczach)
                 Object.keys(data).forEach(mac => {
                     const deviceData = data[mac];
-                    const config = deviceData.config || { state: 'DISARMED', threshold: 1.5 };
+                    const config = deviceData.config || { state: 'DISARMED', threshold: 0.5 };
 
                     // Pobranie ostatniego pomiaru (jeśli istnieje)
                     let lastAccel = 0;
+                    let lastBattery = null;
                     if (deviceData.measurements) {
                         const mKeys = Object.keys(deviceData.measurements);
                         const lastM = deviceData.measurements[mKeys[mKeys.length - 1]];
                         // Obliczamy przybliżoną siłę wstrząsu (max z osi)
-                        lastAccel = Math.max(Math.abs(lastM.accel_x), Math.abs(lastM.accel_y), Math.abs(lastM.accel_z)).toFixed(2);
+
+                        lastAccel = (Math.abs(Math.sqrt(
+                            lastM.accel_x ** 2 +
+                            lastM.accel_y ** 2 +
+                            lastM.accel_z ** 2
+                        ) - 1.0).toFixed(2));
+
+                        if (typeof lastM.battery_mv === 'number') {
+                            lastBattery = (lastM.battery_mv / 1000).toFixed(2);
+                        }
                     }
 
                     // Ustalenie wyglądu karty
@@ -264,12 +285,17 @@ const firebaseConfig = {
                                 <div class="text-center py-3">
                                     <h2 class="display-6 fw-bold mb-0">${lastAccel} G</h2>
                                     <small class="text-muted">Ostatni pomiar przyspieszenia</small>
+                                    <div class="mt-2">
+                                        <span class="fw-semibold">${lastBattery ?? '-'}</span>
+                                        <span class="text-muted">V</span>
+                                    </div>
+                                    <small class="text-muted">Napięcie baterii</small>
                                 </div>
 
                                 <hr>
 
                                 <label class="form-label small fw-bold">Czułość alarmu: <span id="val-${mac}">${config.threshold}</span> G</label>
-                                <input type="range" class="form-range" min="1.05" max="3.0" step="0.05"
+                                <input type="range" class="form-range" min="0.01" max="1.0" step="0.02"
                                     value="${config.threshold}"
                                     onchange="window.updateThreshold('${mac}', this.value)"
                                     oninput="document.getElementById('val-${mac}').innerText = this.value">
@@ -351,7 +377,7 @@ const firebaseConfig = {
                     // Inicjalizacja configu
                     await update(ref(db, `users/${currentUser.uid}/devices/${json.mac}/config`), {
                         state: 'DISARMED',
-                        threshold: 1.5
+                        threshold: 0.5
                     });
                 }
             } catch (e) {

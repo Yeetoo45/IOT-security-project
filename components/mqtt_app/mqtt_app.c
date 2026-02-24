@@ -39,9 +39,10 @@ static char s_topic_data[128];
 static char s_topic_config[128];
 static char s_uri_with_local[256];
 
-static volatile float s_theft_threshold = 1.5; // Domyślny próg
+static volatile float s_theft_threshold = 0.5; // Domyślny próg
 static volatile bool s_is_armed = false;       // Czy system czuwa?
 volatile bool s_alarm_triggered = false;       // Czy wykryto kradzież?
+static volatile float s_battery_mv = 0.0f;     // Aktualne napięcie baterii (mV)
 
 static bool s_pinpad_task_started = false;
 static TaskHandle_t s_pinpad_task_handle = NULL;
@@ -52,6 +53,7 @@ static bool s_audio_ready = false;
 static bool s_alarm_sound_active = false;
 static adxl345_handle_t s_adxl_handle = NULL;
 static bool s_adxl_i2c_ready = false;
+bool send_now = false;
 
 #define TOPIC_HB "iot/server/status" // jak ESP nie dostanie przez jakiś czas to nie wysyła danych
 
@@ -253,12 +255,14 @@ static void pinpad_disarm_task(void *pvParameters)
                         s_alarm_sound_active = false;
                         s_alarm_triggered = false;
                     }
+                    send_now = true; // Flaga wymuszenia wysyłki MQTT przy rozbrojeniu
                 }
                 else
                 {
                     s_is_armed = true;
                     s_alarm_triggered = false;
                     ESP_LOGI(TAG, "PINPAD: poprawny kod, uzbrojono");
+                    send_now = true; // Flaga wymuszenia wysyłki MQTT przy uzbrojeniu
                 }
             }
             else
@@ -350,21 +354,21 @@ static void publisher_task(void *pvParameters)
         int64_t now_ms = esp_timer_get_time() / 1000;
 
         // dziala zawsze niezależnie od stanu serwera MQTT
-        bool alarm_just_triggered = false;
 
         if (s_adxl_handle != NULL)
         {
             if (adxl345_get_accel(s_adxl_handle, &accel) == ESP_OK)
             {
                 float current_g = sqrtf((accel.x * accel.x) + (accel.y * accel.y) + (accel.z * accel.z));
+                float motion = fabsf(current_g - 1.0f);
 
-                if (s_is_armed && current_g > s_theft_threshold)
+                if (s_is_armed && motion > s_theft_threshold)
                 {
                     if (!s_alarm_triggered)
                     {
                         // Wykryto nowy atak!
                         s_alarm_triggered = true;
-                        alarm_just_triggered = true; // Flaga wymuszenia wysyłki MQTT
+                        send_now = true; // Flaga wymuszenia wysyłki MQTT
 
                         ESP_LOGE(TAG, "ALARM! Wstrząs: %.2f G. Uruchamiam syrenę lokalnie!", current_g);
 
@@ -403,24 +407,36 @@ static void publisher_task(void *pvParameters)
         // 3. (Minął czas 5s) LUB (Właśnie wykryto alarm - priorytet)
         if (client != NULL && s_mqtt_connected_to_server && server_is_alive)
         {
-            if (alarm_just_triggered || (now_ms - last_publish_time) > PUBLISH_INTERVAL_MS)
+            if (send_now || (now_ms - last_publish_time) > PUBLISH_INTERVAL_MS)
             {
                 char *status_txt = "DISARMED";
-                if (s_alarm_triggered)
-                    status_txt = "ROBBERY";
-                else if (s_is_armed)
-                    status_txt = "ARMED";
+                if (send_now)
+                {
+
+                    if (s_alarm_triggered)
+                        status_txt = "ROBBERY";
+                    else if (s_is_armed)
+                        status_txt = "ARMED";
+                    else if (!s_is_armed)
+                        status_txt = "DISARMED";
+                }
+                else
+                {
+                    status_txt = "-";
+                }
 
                 snprintf(payload, sizeof(payload),
-                         "{\"status\": \"%s\", \"x\": %.2f, \"y\": %.2f, \"z\": %.2f, \"alarm\": %s}",
+                         "{\"status\": \"%s\", \"x\": %.2f, \"y\": %.2f, \"z\": %.2f, \"alarm\": %s, \"battery_mv\": %.0f}",
                          status_txt, accel.x, accel.y, accel.z,
-                         s_alarm_triggered ? "true" : "false");
+                         s_alarm_triggered ? "true" : "false",
+                         s_battery_mv);
 
                 // non-blocking (len=0, qos=0) szybciej
-                esp_mqtt_client_publish(client, s_topic_data, payload, 0, 0, 0);
+                esp_mqtt_client_publish(client, s_topic_data, payload, 0, send_now ? 1 : 0, send_now ? 1 : 0);
 
                 last_publish_time = now_ms;
             }
+            send_now = false; // zresetuj flagę po wysłaniu
         }
 
         vTaskDelay(pdMS_TO_TICKS(SAMPLING_INTERVAL_MS));
@@ -436,7 +452,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         s_mqtt_connected_to_server = true;
         ESP_LOGI(TAG, "MQTT Połączono!");
 
-        esp_mqtt_client_subscribe(client, s_topic_config, 0);
+        // QoS=1 dla configu, żeby ARM/DISARM miały najwyższy priorytet dostarczania
+        esp_mqtt_client_subscribe(client, s_topic_config, 1);
         esp_mqtt_client_subscribe(client, TOPIC_HB, 0);
 
         if (!s_task_started)
@@ -546,4 +563,9 @@ void mqtt_send_delete_db(void)
 
     esp_mqtt_client_publish(client, s_topic_data, payload, 0, 0, 0);
     ESP_LOGI(TAG, "Wysłano: %s", payload);
+}
+
+void mqtt_app_set_battery_mv(float battery_mv)
+{
+    s_battery_mv = battery_mv;
 }

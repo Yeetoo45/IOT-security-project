@@ -105,9 +105,10 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
         char resp_str[100];
         snprintf(resp_str, sizeof(resp_str), "{\"status\":\"ok\", \"mac\":\"%s\"}", mac_str);
 
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*"); // CORS żeby działało na PWA
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, OPTIONS");
         httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+        httpd_resp_set_hdr(req, "Access-Control-Max-Age", "86400");
         httpd_resp_set_type(req, "application/json");
         httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
 
@@ -265,11 +266,19 @@ EventGroupHandle_t wifi_get_event_group(void)
 {
     return s_wifi_event_group;
 }
+#include "esp_partition.h"
 
 void wifi_manager_reset_provisioning(void)
 {
     ESP_LOGW(TAG, "FACTORY RESET: Kasowanie WiFi z NVS!");
-    nvs_flash_erase();
+
+    const esp_partition_t *nvs_part =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                 ESP_PARTITION_SUBTYPE_DATA_NVS,
+                                 NULL);
+
+    ESP_ERROR_CHECK(esp_partition_erase_range(nvs_part, 0, nvs_part->size));
+
     esp_restart();
 }
 

@@ -50,6 +50,12 @@ extern "C"
      */
     void mqtt_send_delete_db(void);
 
+    /**
+     * @brief Ustawia aktualne napięcie baterii (mV) do wysyłki MQTT.
+     * @param battery_mv Napięcie baterii w mV.
+     */
+    void mqtt_app_set_battery_mv(float battery_mv);
+
 #ifdef __cplusplus
 }
 #endif
