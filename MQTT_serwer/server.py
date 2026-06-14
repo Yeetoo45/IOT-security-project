@@ -10,10 +10,10 @@ MQTT_BROKER = "localhost"  # ten kod działa na serwerze z lokalnym brokerem MQT
 MQTT_PORT = 1883
 
 # Ścieżka do pliku pobranego z Firebase Console
-FIREBASE_CRED_PATH = "admin_sdk.json"
-FIREBASE_DB_URL = (
-    "https://iot-anti-theft-976fb-default-rtdb.europe-west1.firebasedatabase.app/"
-)
+import os
+
+FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH", "admin_sdk.example.json")
+FIREBASE_DB_URL = os.getenv("FIREBASE_DB_URL")
 
 # init Firebase
 cred = credentials.Certificate(FIREBASE_CRED_PATH)
